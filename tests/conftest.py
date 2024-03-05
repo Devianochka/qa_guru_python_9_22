@@ -1,30 +1,24 @@
-import os
 import allure
 import allure_commons
 import pytest
-
-from selene import browser, support
 from appium import webdriver
-from qa_guru_python_8_22 import utils
 from dotenv import load_dotenv
+from selene import browser, support
+from utils import allure_attach
 
 
 def pytest_addoption(parser):
     parser.addoption(
         "--context",
-        default="bstack",
-        help="Specify the test context"
+        required=False,
+        default="local",
+        choices=['local', 'bs'],
     )
 
 
 def pytest_configure(config):
     context = config.getoption("--context")
-    env_file_path = f".env.{context}"
-
-    if os.path.exists(env_file_path):
-        load_dotenv(dotenv_path=env_file_path)
-    else:
-        print(f"Warning: Configuration file '{env_file_path}' not found.")
+    load_dotenv(dotenv_path=f'.env.{context}')
 
 
 @pytest.fixture
@@ -35,7 +29,9 @@ def context(request):
 @pytest.fixture(scope='function', autouse=True)
 def android_mobile_management(context):
     from config import config
+
     options = config.to_driver_options(context=context)
+
 
     with allure.step('setup app session'):
         browser.config.driver = webdriver.Remote(
@@ -50,14 +46,19 @@ def android_mobile_management(context):
 
     yield
 
-    utils.allure_attach.screenshot()
+    allure_attach.add_screenshot(browser)
 
-    utils.allure_attach.page_source_xml()
+    allure_attach.add_xml(browser)
 
-    session_id = browser.driver.session_id
+    if context == 'bs':
+        session_id = browser.driver.session_id
 
-    with allure.step('tear down app session with id' + session_id):
-        browser.quit()
+        with allure.step('tear down app session with id' + session_id):
+            browser.quit()
 
-    if context == 'bstack':
-        utils.allure_attach.bstack_video(session_id)
+        bstack = options.get_capability('bstack:options')
+        login = bstack['userName']
+        password = bstack['accessKey']
+        allure_attach.attach_bstack_video(session_id, login, password)
+
+    browser.quit()
